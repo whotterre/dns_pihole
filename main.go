@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"net"
+
+	entities "github.com/whotterre/dns_pihole/models"
 )
 
 func main() {
@@ -16,7 +18,7 @@ func main() {
 	defer conn.Close()
 
 	log.Println("DNS Server started on port 5354")
-	
+
 	// Keep the server running
 	buffer := make([]byte, 512)
 	for {
@@ -29,7 +31,7 @@ func main() {
 		log.Printf("First few bytes: %x", buffer[:min(n, 16)])
 	}
 
-	
+	// Parse the DNS packet
 }
 
 func min(a, b int) int {
@@ -38,3 +40,18 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// DNS headers reads data in big-endian format and the data is seperated
+// This part joins them together
+func parseDNSHeader(data []byte) entities.DNSHeader {
+	return entities.DNSHeader{
+		ID:      uint16(data[0]) <<8 | uint16(data[1]),
+		Flags:   uint16(data[2]) <<8 | uint16(data[3]),
+		QdCount: uint16(data[4]) <<8 | uint16(data[5]),
+		AnCount: uint16(data[6]) <<8 | uint16(data[7]),
+		NsCount: uint16(data[8]) <<8 | uint16(data[9]),
+		ArCount: uint16(data[10]) <<8 | uint16(data[11]),
+	}
+}
+
+
