@@ -37,5 +37,5 @@ go run main.go
 By default the example binds to `127.0.0.1:5354`. Change the address/port in `main.go` if you need a different bind.
 
 ## Helpful References
-- [The structure of DNS](https://datatracker.ietf.org/doc/html/rfc1035)
+- [The structure of DNS - RFC 1035 Reference](https://datatracker.ietf.org/doc/html/rfc1035)
 - [DNS Pihole](https://en.wikipedia.org/wiki/Pi-hole)
