@@ -54,4 +54,25 @@ func parseDNSHeader(data []byte) entities.DNSHeader {
 	}
 }
 
+/*
+ DNS name data is usually in this form:
+ - [length][chars][length][chars][0]
+ - eg for google.com, we'd have [6]google[3]com[0]
+ This function changes it to the form of google.com
+ */
+func parseDomainName(data []byte, offset int) (string, int) {
+	var name string
+	for {
+		length := int(data[offset])
+		if length == 0 {
+			break
+		}
+		offset++
+
+		name += string(data[offset: offset + length]) + "."
+
+		offset += length
+	}
+	return name, offset
+}
 
