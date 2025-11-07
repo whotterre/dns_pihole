@@ -39,3 +39,6 @@ By default the example binds to `127.0.0.1:5354`. Change the address/port in `ma
 ## Helpful References
 - [The structure of DNS - RFC 1035 Reference](https://datatracker.ietf.org/doc/html/rfc1035)
 - [DNS Pihole](https://en.wikipedia.org/wiki/Pi-hole)
+
+# Credits 
+The domains in the blocklist are from [here](https://github.com/hagezi/dns-blocklists)
