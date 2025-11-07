@@ -45,9 +45,9 @@ func main() {
 
 		// Parse query type and class
 		var qtype, qclass uint16
-		if endOffset+4 <= n {
-			qtype = uint16(buffer[endOffset])<<8 | uint16(buffer[endOffset+1])
-			qclass = uint16(buffer[endOffset+2])<<8 | uint16(buffer[endOffset+3])
+		if endOffset + 4 <= n {
+			qtype = uint16(buffer[endOffset]) << 8 | uint16(buffer[endOffset + 1])
+			qclass = uint16(buffer[endOffset + 2]) << 8 | uint16(buffer[endOffset + 3])
 		}
 
 		qtypeStr := "UNKNOWN"
@@ -111,12 +111,12 @@ func parseDomainName(data []byte, offset int) (string, int) {
 		}
 
 		// Handle DNS compression pointers (0xC0)
-		if length&0xC0 == 0xC0 {
-			if offset+1 >= len(data) {
+		if length & 0xC0 == 0xC0 {
+			if offset + 1 >= len(data) {
 				break
 			}
 			// Pointer to another location (14-bit offset)
-			pointer := int(data[offset]&0x3F)<<8 | int(data[offset+1])
+			pointer := int(data[offset] & 0x3F) << 8 | int(data[offset + 1])
 			suffix, _ := parseDomainName(data, pointer)
 			if len(suffix) > 0 {
 				if len(name) > 0 {
@@ -143,121 +143,3 @@ func parseDomainName(data []byte, offset int) (string, int) {
 	return name, offset
 }
 
-func buildDNSResponse(header entities.DNSHeader, query []byte, domain string, qtype uint16) []byte {
-	response := make([]byte, 512)
-	offset := 0
-
-	// Determine if we can answer this query
-	canAnswer := qtype == 1 // Only handle A records for now
-
-	// 1. Header
-	response[0] = byte(header.ID >> 8)
-	response[1] = byte(header.ID)
-	response[2] = 0x81 // QR=1 (response), Opcode=0, AA=0
-
-	// Set RCODE based on whether we can answer
-	if canAnswer {
-		response[3] = 0x80 // RA=1, RCODE=0 (no error)
-	} else {
-		response[3] = 0x80 // RA=1, RCODE=0 (we'll return empty answer)
-		log.Printf("Cannot answer query type %d for %s", qtype, domain)
-	}
-
-	response[4] = 0x00 // QDCOUNT high
-	response[5] = 0x01 // QDCOUNT low (1 question)
-	response[6] = 0x00 // ANCOUNT high
-	if canAnswer {
-		response[7] = 0x01 // ANCOUNT low (1 answer)
-	} else {
-		response[7] = 0x00 // ANCOUNT low (0 answers)
-	}
-	response[8] = 0x00  // NSCOUNT high
-	response[9] = 0x00  // NSCOUNT low
-	response[10] = 0x00 // ARCOUNT high
-	response[11] = 0x00 // ARCOUNT low
-	offset = 12
-
-	// 2. Copy Question Section from original query
-	// Find where question section ends (after domain + 4 bytes for QTYPE and QCLASS)
-	questionEnd := 12
-	for questionEnd < len(query) && query[questionEnd] != 0 {
-		length := int(query[questionEnd])
-		if length&0xC0 == 0xC0 {
-			// Compression pointer
-			questionEnd += 2
-			break
-		}
-		questionEnd += 1 + length
-	}
-	if questionEnd < len(query) && query[questionEnd] == 0 {
-		questionEnd++ // Skip null terminator
-	}
-	questionEnd += 4 // Skip QTYPE (2 bytes) + QCLASS (2 bytes)
-
-	// Copy the question section
-	if questionEnd <= len(query) {
-		questionLen := questionEnd - 12
-		copy(response[offset:], query[12:questionEnd])
-		offset += questionLen
-	}
-
-	// 3. Add Answer Section (only if we can answer)
-	if !canAnswer {
-		return response[:offset]
-	}
-	// Name pointer (0xC00C points back to question name at offset 12)
-	response[offset] = 0xC0
-	response[offset+1] = 0x0C
-	offset += 2
-
-	// TYPE (A record = 1)
-	response[offset] = 0x00
-	response[offset+1] = 0x01
-	offset += 2
-
-	// CLASS (IN = 1)
-	response[offset] = 0x00
-	response[offset+1] = 0x01
-	offset += 2
-
-	// TTL (300 seconds = 0x0000012C)
-	response[offset] = 0x00
-	response[offset+1] = 0x00
-	response[offset+2] = 0x01
-	response[offset+3] = 0x2C
-	offset += 4
-
-	// RDLENGTH (4 bytes for IPv4)
-	response[offset] = 0x00
-	response[offset+1] = 0x04
-	offset += 2
-
-	// RDATA (IP address)
-	// TODO: Check if domain should be blocked and return 0.0.0.0
-	// For now, return a default IP (e.g., 192.168.1.1)
-	ip := getIPForDomain(domain)
-	response[offset] = ip[0]
-	response[offset+1] = ip[1]
-	response[offset+2] = ip[2]
-	response[offset+3] = ip[3]
-	offset += 4
-
-	return response[:offset]
-}
-
-// getIPForDomain returns the IP address to respond with for a given domain
-// TODO: Implement blocklist/allowlist logic here
-// For blocked domains, you might return 0.0.0.0 or 127.0.0.1
-// For allowed domains, forward to real DNS or return cached IP
-func getIPForDomain(domain string) [4]byte {
-	// Example: block ads
-	if strings.Contains(domain, "ads") || strings.Contains(domain, "tracker") {
-		log.Printf("Blocking: %s", domain)
-		return [4]byte{0, 0, 0, 0} // Returns 0.0.0.0 for blocked domains
-	}
-
-	// Default: return a placeholder IP
-	// In production, you'd forward to a real DNS server
-	log.Printf("Allowing: %s", domain)
-	return [4]byte{192, 168, 1, 1}
-}
