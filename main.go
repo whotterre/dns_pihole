@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"net"
-	"strings"
 
 	entities "github.com/whotterre/dns_pihole/models"
 )
@@ -45,9 +44,9 @@ func main() {
 
 		// Parse query type and class
 		var qtype, qclass uint16
-		if endOffset + 4 <= n {
-			qtype = uint16(buffer[endOffset]) << 8 | uint16(buffer[endOffset + 1])
-			qclass = uint16(buffer[endOffset + 2]) << 8 | uint16(buffer[endOffset + 3])
+		if endOffset+4 <= n {
+			qtype = uint16(buffer[endOffset])<<8 | uint16(buffer[endOffset+1])
+			qclass = uint16(buffer[endOffset+2])<<8 | uint16(buffer[endOffset+3])
 		}
 
 		qtypeStr := "UNKNOWN"
@@ -77,8 +76,7 @@ func main() {
 	}
 }
 
-// DNS headers reads data in big-endian format and the data is seperated
-// This part joins them together
+// This reads data and converts it from bytes to big-endian format and the data is seperated
 func parseDNSHeader(data []byte) entities.DNSHeader {
 	return entities.DNSHeader{
 		ID:      uint16(data[0])<<8 | uint16(data[1]),
@@ -111,12 +109,12 @@ func parseDomainName(data []byte, offset int) (string, int) {
 		}
 
 		// Handle DNS compression pointers (0xC0)
-		if length & 0xC0 == 0xC0 {
-			if offset + 1 >= len(data) {
+		if length&0xC0 == 0xC0 {
+			if offset+1 >= len(data) {
 				break
 			}
 			// Pointer to another location (14-bit offset)
-			pointer := int(data[offset] & 0x3F) << 8 | int(data[offset + 1])
+			pointer := int(data[offset]&0x3F)<<8 | int(data[offset+1])
 			suffix, _ := parseDomainName(data, pointer)
 			if len(suffix) > 0 {
 				if len(name) > 0 {
@@ -143,3 +141,109 @@ func parseDomainName(data []byte, offset int) (string, int) {
 	return name, offset
 }
 
+func buildDNSResponse(headerData entities.DNSHeader, query []byte, domain string, qtype uint16) []byte {
+	response := make([]byte, 512)
+	offset := 0
+
+	canAnswer := qtype == 1
+
+	// Build the DNS header
+	response[0] = byte(headerData.ID >> 8)
+
+	response[1] = byte(headerData.ID)
+
+	response[2] = 0x81 // Sets Query flag to 1 (Response) and RD flag to 1
+
+	if canAnswer {
+		response[3] = 0x80 // RA=1, RCODE=0 (no error)
+	} else {
+		response[3] = 0x80 // RA=1, RCODE=0 (we'll return empty answer)
+		log.Printf("Cannot answer query type %d for %s", qtype, domain)
+	}
+	response[4] = 0x00 // QDCOUNT high
+	response[5] = 0x01 // QDCount low
+	response[6] = 0x00 //ANCount high
+	if canAnswer {
+		response[7] = 0x01 // ANCOUNT low (1 answer)
+	} else {
+		response[7] = 0x00 // ANCOUNT low (0 answers)
+	}
+	response[8] = 0x00  // NSCOUNT high
+	response[9] = 0x00  // NSCOUNT low
+	response[10] = 0x00 // ARCOUNT high
+	response[11] = 0x00 // ARCOUNT low
+	offset = 12
+
+	// Copy question section from original query
+	questionEnd := 12
+	for questionEnd < len(query) && query[questionEnd] != 0 {
+		length := int(query[questionEnd])
+		if length&0xC0 == 0xC0 {
+			questionEnd += 2
+			break
+		}
+
+		questionEnd += 1 + length
+	}
+	if questionEnd < len(query) && query[questionEnd] == 0 {
+		questionEnd++
+	}
+	questionEnd += 4 // Skip QTYPE (2 bytes) + QCLASS (2 bytes)
+
+	// Copy the question section
+	if questionEnd <= len(query) {
+		questionLen := questionEnd - 12
+		copy(response[offset:], query[12:questionEnd])
+		offset += questionLen
+	}
+
+	// 3. Add Answer Section (only if we can answer)
+	if !canAnswer {
+		return response[:offset]
+	}
+	response[offset] = 0xC0
+	response[offset+1] = 0x0C
+	offset += 2
+
+	// TYPE (A record = 1)
+	response[offset] = 0x00
+	response[offset+1] = 0x01
+	offset += 2
+
+	// CLASS (IN = 1)
+	response[offset] = 0x00
+	response[offset+1] = 0x01
+	offset += 2
+
+	// TTL (300 seconds = 0x0000012C)
+	response[offset] = 0x00
+	response[offset+1] = 0x00
+	response[offset+2] = 0x01
+	response[offset+3] = 0x2C
+	offset += 4
+
+	// RDLENGTH (4 bytes for IPv4)
+	response[offset] = 0x00
+	response[offset+1] = 0x04
+	offset += 2
+
+	// RDATA (IP address)
+	var ip [4]byte
+	if checkIsBlocked(domain) {
+		ip = [4]byte{0, 0, 0, 0}
+		log.Printf("Blocked: %s", domain)
+	} else {
+		ip = [4]byte{192, 168, 1, 1}
+	}
+	response[offset] = ip[0]
+	response[offset+1] = ip[1]
+	response[offset+2] = ip[2]
+	response[offset+3] = ip[3]
+	offset += 4
+
+	return response[:offset]
+}
+
+func checkIsBlocked(domain string) bool {
+	return false
+}
