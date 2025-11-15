@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"log"
 	"net"
+	"os"
+	"strings"
 
 	entities "github.com/whotterre/dns_pihole/models"
 )
@@ -19,6 +23,10 @@ func main() {
 	defer conn.Close()
 
 	log.Println("DNS Server started on port 5356")
+
+	if err := loadBlocklist("blocklist.txt"); err != nil {
+		log.Printf("Warning: %v", err)
+	}
 
 	// Keep the server running
 	buffer := make([]byte, 512)
@@ -74,10 +82,14 @@ func main() {
 			log.Printf("Sent %d bytes back to client", written)
 		}
 	}
+
 }
 
 // This reads data and converts it from bytes to big-endian format and the data is seperated
 func parseDNSHeader(data []byte) entities.DNSHeader {
+	if len(data) < 12 {
+		return entities.DNSHeader{}
+	}
 	return entities.DNSHeader{
 		ID:      uint16(data[0])<<8 | uint16(data[1]),
 		Flags:   uint16(data[2])<<8 | uint16(data[3]),
@@ -95,12 +107,21 @@ DNS name data is usually in this form:
 This function changes it to the form of google.com
 */
 func parseDomainName(data []byte, offset int) (string, int) {
+	return parseDomainNameHelper(data, offset, make(map[int]bool))
+}
+
+func parseDomainNameHelper(data []byte, offset int, visited map[int]bool) (string, int) {
 	var name string
 
 	for {
 		if offset >= len(data) {
 			break
 		}
+
+		if visited[offset] {
+			break
+		}
+		visited[offset] = true
 
 		length := int(data[offset])
 		if length == 0 {
@@ -115,7 +136,10 @@ func parseDomainName(data []byte, offset int) (string, int) {
 			}
 			// Pointer to another location (14-bit offset)
 			pointer := int(data[offset]&0x3F)<<8 | int(data[offset+1])
-			suffix, _ := parseDomainName(data, pointer)
+			if pointer >= len(data) {
+				break
+			}
+			suffix, _ := parseDomainNameHelper(data, pointer, visited)
 			if len(suffix) > 0 {
 				if len(name) > 0 {
 					name += "."
@@ -123,6 +147,10 @@ func parseDomainName(data []byte, offset int) (string, int) {
 				name += suffix
 			}
 			offset += 2
+			break
+		}
+
+		if length > 63 {
 			break
 		}
 
@@ -244,6 +272,33 @@ func buildDNSResponse(headerData entities.DNSHeader, query []byte, domain string
 	return response[:offset]
 }
 
+var blocklist map[string]bool
+
+func loadBlocklist(filePath string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open blocklist: %w", err)
+	}
+	defer file.Close()
+
+	blocklist = make(map[string]bool)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		blocklist[line] = true
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("error reading blocklist: %w", err)
+	}
+
+	log.Printf("Loaded %d blocked domains", len(blocklist))
+	return nil
+}
+
 func checkIsBlocked(domain string) bool {
-	return false
+	return blocklist[domain]
 }
