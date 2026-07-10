@@ -9,7 +9,7 @@ func main() {
 	// Listen on localhost UDP port 5356
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{
 		IP:   net.ParseIP("127.0.0.1"),
-		Port: 5356,
+		Port: 53,
 	})
 	if err != nil {
 		log.Fatal("Failed to listen:", err)
@@ -65,15 +65,40 @@ func main() {
 		log.Printf("Query Type: %s (%d), Class: %d", qtypeStr, qtype, qclass)
 
 		isBlocked := IsBlocked(domain)
-		response := BuildDNSResponse(header, buffer[:n], domain, qtype, isBlocked)
-		log.Printf("Response built: %d bytes", len(response))
-		log.Printf("Response (hex): %x", response)
+		if !isBlocked {
+			// Open a temporary connection to an upstream DNS server
+			upstreamConn, err := net.Dial("udp", "1.1.1.1:53")
+			if err != nil {
+				log.Printf("Failed to dial upstream: %v", err)
+				continue
+			}
 
-		written, err := conn.WriteToUDP(response, addr)
-		if err != nil {
-			log.Printf("Failed to send response: %v", err)
+			// Forward the exact raw buffer we received from the client
+			_, err = upstreamConn.Write(buffer[:n])
+			if err != nil {
+				log.Printf("Failed to forward upstream: %v", err)
+				upstreamConn.Close()
+				continue
+			}
+
+			// Read the upstream response
+			upstreamResponse := make([]byte, 512)
+			respN, err := upstreamConn.Read(upstreamResponse)
+			upstreamConn.Close()
+			if err != nil {
+				log.Printf("Failed to read from upstream: %v", err)
+				continue
+			}
+
+			// Send the authentic response straight back to your client
+			_, err = conn.WriteToUDP(upstreamResponse[:respN], addr)
+			if err != nil {
+				log.Printf("Failed sending upstream response to client: %v", err)
+			}
 		} else {
-			log.Printf("Sent %d bytes back to client", written)
+			// Call your existing BuildDNSResponse for blocks
+			response := BuildDNSResponse(header, buffer[:n], domain, qtype, true)
+			conn.WriteToUDP(response, addr)
 		}
 	}
 }
