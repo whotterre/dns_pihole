@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"sync"
@@ -97,16 +98,24 @@ func CreateBlacklist(ipAddr string, items []string) error {
 	return nil
 }
 
-// func cleanupStaleEntries() {
-// 	go func() {
-// 		// How do we know that if something is stale..
-// 		// now := time.Now()
-// 		ticker := time.NewTicker(cleanupInterval)
-// 		defer ticker.Stop()
+func cleanupStaleEntries() {
+	go func() {
+		// How do we know that if something is stale..
+		ticker := time.NewTicker(cleanupInterval)
+		defer ticker.Stop()
 
-// 		for range ticker.C {
-			
-// 		}
-// 	}()
-
-// }
+		for range ticker.C {
+			// cleanup time!
+			mu.Lock()
+			now := time.Now()
+			for id, lease := range leaseMap {
+				if now.Sub(lease.ExpiresAt) > 0 {
+					// deleeteeee!!!!!
+					log.Printf("[Janitor] Evicting expired lease for IP/Session: %s", id)
+					delete(leaseMap, id)
+				} 
+			}
+			mu.Unlock()
+		}
+	}()
+}

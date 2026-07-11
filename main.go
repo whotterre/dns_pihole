@@ -22,6 +22,8 @@ func main() {
 	if err := LoadBlocklist("./lists/global_hagezi.txt"); err != nil {
 		log.Printf("Warning: %v", err)
 	}
+	cleanupStaleEntries()
+
 	go func() {
 		// Start HTTP server here
 		app := http.NewServeMux()
