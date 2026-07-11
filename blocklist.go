@@ -74,7 +74,6 @@ func IsBlocked(domain string) bool {
 	return blocklist[domain]
 }
 
-
 func CreateBlacklist(ipAddr string, items []string) error {
 	// Creates a blacklist or appends to an existing one for user
 	blacklistFileName := fmt.Sprintf("./lists/%s", ipAddr)
@@ -113,7 +112,7 @@ func cleanupStaleEntries() {
 					// deleeteeee!!!!!
 					log.Printf("[Janitor] Evicting expired lease for IP/Session: %s", id)
 					delete(leaseMap, id)
-				} 
+				}
 			}
 			mu.Unlock()
 		}
