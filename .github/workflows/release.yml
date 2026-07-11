@@ -1,0 +1,52 @@
+name: Release Go Binaries
+
+on:
+  push:
+    tags:
+      - 'v*' 
+
+permissions:
+  contents: write 
+
+jobs:
+  build-and-release:
+    name: Build Cross-Platform Binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go Runtime
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25' # Matches your high-performance spec
+          cache: true
+
+      - name: Build Cross-Platform Matrix
+        run: |
+          # Create deployment build directory
+          mkdir -p dist
+          
+          # 1. Linux (Target for home servers, routers, Raspberry Pis)
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/dns_engine_linux_amd64 .
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/dns_engine_linux_arm64 .
+          
+          # 2. Windows x64
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/dns_engine_windows_amd64.exe .
+          
+          # 3. macOS (Apple Silicon & Intel)
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/dns_engine_darwin_arm64 .
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/dns_engine_darwin_amd64 .
+
+      - name: Generate GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/dns_engine_linux_amd64
+            dist/dns_engine_linux_arm64
+            dist/dns_engine_windows_amd64.exe
+            dist/dns_engine_darwin_arm64
+            dist/dns_engine_darwin_amd64
+          draft: false
+          prerelease: false
+          generate_release_notes: true 
