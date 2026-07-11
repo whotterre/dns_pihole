@@ -1,44 +1,100 @@
-# DNS Pi Hole 
+# DNS PiHole
 
-I decided to try a challenge that doesn't involve web stuff today.
-I intend this to be a tiny DNS UDP listener written in Go intended as a lightweight helper/proxy to block ads.
-This repository contains a minimal example that binds to a local UDP port and reads incoming packets (for now).
+A lightweight DNS proxy and UDP listener written in Go, designed to intercept queries and filter out advertisements, tracking metrics, and unwanted telemetry. 
+
+Unlike traditional static blockers, this engine utilizes a session-aware runtime ledger that maps transient client network IPs to long-lived browser identities dynamically.
+
 ## Features
 
-- Minimal UDP DNS listener (example)
-- Easy to build with Go
-- Intended for local development and experimentation
+- **Concurrent Core Engines:** Low-latency UDP DNS core running alongside a management HTTP dashboard server.
+- **Session-Aware Filtering:** Transparent browser-cookie generation (`user_id`) utilizing long-lived Unix timestamps.
+- **Dynamic Time Leases:** Ephemeral in-memory routing ledger (`leaseMap`) that binds temporary DHCP client IPs to persistent rule profiles with rolling 3-hour expiration windows.
+- **Automated Memory Janitor:** Thread-safe background worker running on strict ticker intervals to evict stale network mappings without memory leaks.
+- **Flexible Rules Architecture:** Supports isolated blocklist profile evaluation falling back seamlessly to an aggregate upstream HaGeZi rule structure.
 
 ## Requirements
 
-- Go 1.20+ (Go 1.25+ is also supported)
+- Go 1.20+ (Go 1.25+ highly recommended)
 
 ## Build
 
-Run the following in PowerShell or a POSIX shell inside the project directory:
+Compile the structural binary directly inside your workspace root directory:
 
-```powershell
+```bash
 go mod tidy
-go build -o dns_pihole .
+go build -o dns_engine .
+
 ```
+
+*Note: Compiling the binary locally ensures that the relative runtime folder targets (`./lists/`) are consistently mapped to your actual project root rather than sandboxed environment temp directories.*
 
 ## Run
 
-You can run the built binary or use `go run` while iterating on the code:
+Execute the compiled binary from your terminal workspace root:
 
-```powershell
-# Run the binary
-.\dns_pihole.exe
+```bash
+# Run the application binary natively
+./dns_engine
 
-# Or run directly with Go while developing
-go run main.go
 ```
 
-By default the example binds to `127.0.0.1:5354`. Change the address/port in `main.go` if you need a different bind.
+* **DNS Core Engine:** Binds universally to intercept network UDP packets on port `53`.
+* **Management Web Dashboard:** Hosts incoming management traffic on port `8000`.
+## Changelog
+
+All notable changes to this project are documented below in accordance with Semantic Versioning standards.
+
+### [1.2.0] - 2026-07-11
+
+#### Added
+- **HTTP Dashboard Engine:** Introduced a concurrent HTTP server hosted on port `8000` via standard library `net/http` multiplexing.
+- **Session-Aware Upload Handler:** Created the `POST /blocklist/upload` endpoint using long-lived browser cookies (`user_id`) bound to persistent Unix timestamp identities.
+- **In-Memory Time Ledger:** Added a thread-safe `leaseMap` state mechanism protected by `sync.RWMutex` to map real-time DHCP client IPs to user blocklist profiles.
+- **Background Janitor Thread:** Deployed an automated, concurrent memory cleanup worker running on high-precision `time.Ticker` intervals to cleanly evict stale lease records.
+
+#### Changed
+- **Router Configuration:** Migrated route registrations from `app.Handle` interfaces to plain function adapters via `app.HandleFunc` to support raw HTTP handlers.
+- **IP Extraction Logic:** Integrated `net.SplitHostPort` parsing inside the web pipeline to reliably isolate client network traffic from shifting TCP port values.
+- **File System Scoping:** Hardened data persistence targets to relative workspaces (`./lists/`) to prevent environment sandboxing bugs when launching applications.
+
+#### Fixed
+- Fixed a critical variable shadowing bug where short-declaration token assignments (`:=`) accidentally isolated the system's runtime user identities inside block scopes.
+- Resolved a data race vulnerability inside the garbage collector worker by wrapping map iterations in comprehensive system write-locks.
+
+---
+
+### [1.1.0] - 2026-06-15
+#### Added
+- Implemented core domain filtering mechanism capable of parsing upstream file lists.
+- Added localized thread safe caching for high frequency lookup queries.
+
+### [1.0.0] - 2026-05-10
+#### Added
+- Initial release containing the base low-latency UDP socket listener binding to network port `53`.
+- Added standard RFC 1035 binary packet parsing skeletons.
+
+### API Specifications
+#### Upload Blocklist Profiles
+
+* **Endpoint:** `POST /blocklist/upload`
+* **Headers:** Expects incoming session validation via the `user_id` cookie. (Automatically generated and injected on first connection).
+* **Payload Format:**
+```json
+{
+  "entries": [
+    "analytics.doubleclick.net",
+    "telemetry.bad-actor.io"
+  ]
+}
+
+```
+
 
 ## Helpful References
-- [The structure of DNS - RFC 1035 Reference](https://datatracker.ietf.org/doc/html/rfc1035)
-- [DNS Pihole](https://en.wikipedia.org/wiki/Pi-hole)
 
-# Credits 
-The domains in the blocklist are from [here](https://github.com/hagezi/dns-blocklists)
+* [RFC 1035 - Domain Names Implementation & Specification](https://datatracker.ietf.org/doc/html/rfc1035)
+* [Conventional Commits - Semantic Commit Specifications](https://www.conventionalcommits.org/)
+
+## Credits
+
+* Fundamental upstream base blocklists provided courtesy of the upstream [HaGeZi DNS Blocklists Repository](https://github.com/hagezi/dns-blocklists).
