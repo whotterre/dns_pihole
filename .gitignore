@@ -1,1 +1,3 @@
 *.exe
+lists/
+!lists/global_hagezi.txt

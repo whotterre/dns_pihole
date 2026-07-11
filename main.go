@@ -28,6 +28,7 @@ func main() {
 		// Start HTTP server here
 		app := http.NewServeMux()
 		SetupRoutes(app)
+		log.Println("Started HTTP server on port 8000")
 		err = http.ListenAndServe(":8000", app)
 		if err != nil {
 			log.Fatalf("HTTP server crashed: %v", err)
