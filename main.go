@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"net/http"
 )
 
 func main() {
@@ -18,9 +19,18 @@ func main() {
 
 	log.Println("DNS Server started on port 5356")
 
-	if err := LoadBlocklist("blocklist.txt"); err != nil {
+	if err := LoadBlocklist("./lists/global_hagezi.txt"); err != nil {
 		log.Printf("Warning: %v", err)
 	}
+	go func() {
+		// Start HTTP server here
+		app := http.NewServeMux()
+		SetupRoutes(app)
+		err = http.ListenAndServe(":8000", app)
+		if err != nil {
+			log.Fatalf("HTTP server crashed: %v", err)
+		}
+	}()
 
 	buffer := make([]byte, 512)
 	for {
