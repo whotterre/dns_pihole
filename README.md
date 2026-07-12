@@ -44,6 +44,22 @@ Execute the compiled binary from your terminal workspace root:
 
 All notable changes to this project are documented below in accordance with Semantic Versioning standards.
 
+### [1.3.0] - 2026-07-12
+
+#### Added
+- **Vite React Dashboard:** Built an interactive frontend dashboard UI for live metrics, featuring premium glassmorphism aesthetics, dynamic polling, and real-time backend metric visualization.
+- **Robust Analytics API:** Built the `/stats` HTTP endpoint inside `handlers.go` and instrumented `sync/atomic` counters across the core UDP listener to securely stream live metrics (Total Queries, Blocked Queries, Allowed Queries, Uptime) with CORS enabled.
+- **Wildcard Subdomain Blocking:** Re-engineered the core `IsBlocked` rules engine to natively support hierarchical parent domain traversal, allowing base domain lists (e.g. `example.com`) to seamlessly intercept subdomain variants (e.g. `www.example.com`).
+
+#### Changed
+- **Concurrent Core Refactoring:** Overhauled the main DNS listening loop to rapidly process multiple incoming UDP queries asynchronously via independent goroutines, completely resolving bottlenecks.
+- **Dynamic Hot-Loading:** Updated `CreateBlacklist` API endpoint routines so that newly uploaded blocklists instantly merge into the operational runtime map structure without server reboots.
+- **Bootloader Expansion:** Rebuilt the `main.go` startup sequence to dynamically iterate and load every text list located within the `./lists/` directory instead of hardcoding a single configuration.
+
+#### Fixed
+- **Upstream Connection Freezes:** Added missing `SetReadDeadline` configurations on all upstream UDP DNS connection dialing attempts so that silently dropped internet packets do not cause the system threads to hang indefinitely.
+- **Blocklist Parsing Anomaly:** Patched a critical file scanner string validation bug within `LoadBlocklist` that mistakenly filtered out valid domains during boot instantiation.
+
 ### [1.2.0] - 2026-07-11
 
 #### Added
