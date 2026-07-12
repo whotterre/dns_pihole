@@ -13,7 +13,7 @@ func main() {
 	// Listen on localhost UDP port 5356
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{
 		IP:   net.ParseIP("127.0.0.1"),
-		Port: 5356, // tentatively
+		Port: 53,
 	})
 	if err != nil {
 		log.Fatal("Failed to listen:", err)
