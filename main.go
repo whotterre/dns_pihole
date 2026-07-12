@@ -4,6 +4,8 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,8 +22,19 @@ func main() {
 
 	log.Println("DNS Server started on port 5356")
 
-	if err := LoadBlocklist("./lists/global_hagezi.txt"); err != nil {
-		log.Printf("Warning: %v", err)
+	entries, err := os.ReadDir("./lists")
+	if err == nil {
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				if err := LoadBlocklist("./lists/" + entry.Name()); err != nil {
+					log.Printf("Warning loading %s: %v", entry.Name(), err)
+				} else {
+					log.Printf("Loaded blocklist: %s", entry.Name())
+				}
+			}
+		}
+	} else {
+		log.Printf("Failed to read lists directory: %v", err)
 	}
 	cleanupStaleEntries()
 
@@ -45,6 +58,8 @@ func main() {
 		}
 
 		go func(reqBuffer []byte, clientAddr *net.UDPAddr) {
+			atomic.AddUint64(&TotalQueries, 1)
+
 			log.Printf("Received %d bytes from %s", len(reqBuffer), clientAddr)
 			log.Printf("Query (hex): %x", reqBuffer)
 
@@ -114,6 +129,7 @@ func main() {
 					log.Printf("Failed sending upstream response to client: %v", err)
 				}
 			} else {
+				atomic.AddUint64(&BlockedQueries, 1)
 				// Call your existing BuildDNSResponse for blocks
 				response := BuildDNSResponse(header, reqBuffer, domain, qtype, true)
 				conn.WriteToUDP(response, clientAddr)

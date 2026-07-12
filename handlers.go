@@ -7,11 +7,40 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
+)
+
+var (
+	TotalQueries   uint64
+	BlockedQueries uint64
+	StartTime      = time.Now()
 )
 
 func SetupRoutes(app *http.ServeMux) {
 	app.HandleFunc("/blocklist/add", AddToBlocklist)
+	app.HandleFunc("/stats", GetStats)
+}
+
+func GetStats(w http.ResponseWriter, r *http.Request) {
+	// Enable CORS for the dashboard
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method == "OPTIONS" {
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		return
+	}
+
+	stats := map[string]interface{}{
+		"total_queries":   atomic.LoadUint64(&TotalQueries),
+		"blocked_queries": atomic.LoadUint64(&BlockedQueries),
+		"allowed_queries": atomic.LoadUint64(&TotalQueries) - atomic.LoadUint64(&BlockedQueries),
+		"uptime_seconds":  time.Since(StartTime).Seconds(),
+	}
+
+	json.NewEncoder(w).Encode(stats)
 }
 
 func AddToBlocklist(w http.ResponseWriter, r *http.Request) {

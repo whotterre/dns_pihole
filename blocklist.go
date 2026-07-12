@@ -48,14 +48,11 @@ func LoadBlocklist(filePath string) error {
 	scanner := bufio.NewScanner(file)
 	tempMap := make(map[string]bool)
 	for scanner.Scan() {
-		if strings.HasPrefix(scanner.Text(), "#") {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-
-			tempMap[line] = true
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
 		}
+		tempMap[line] = true
 	}
 
 	if scanner.Err() != nil {
@@ -63,7 +60,12 @@ func LoadBlocklist(filePath string) error {
 	}
 
 	mu.Lock()
-	blocklist = tempMap
+	if blocklist == nil {
+		blocklist = make(map[string]bool)
+	}
+	for k, v := range tempMap {
+		blocklist[k] = v
+	}
 	mu.Unlock()
 	return nil
 }
@@ -71,7 +73,22 @@ func LoadBlocklist(filePath string) error {
 func IsBlocked(domain string) bool {
 	mu.RLock()
 	defer mu.RUnlock()
-	return blocklist[domain]
+
+	// Direct match
+	if blocklist[domain] {
+		return true
+	}
+
+	// Subdomain match (e.g., check "pornhub.com" if domain is "www.pornhub.com")
+	parts := strings.Split(domain, ".")
+	for i := 1; i < len(parts)-1; i++ {
+		parentDomain := strings.Join(parts[i:], ".")
+		if blocklist[parentDomain] {
+			return true
+		}
+	}
+
+	return false
 }
 
 func CreateBlacklist(ipAddr string, items []string) error {
@@ -83,16 +100,30 @@ func CreateBlacklist(ipAddr string, items []string) error {
 	}
 	defer file.Close()
 
+	mu.Lock()
+	if blocklist == nil {
+		blocklist = make(map[string]bool)
+	}
 	for _, item := range items {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
 		line := []byte(item + "\n")
 		n, err := file.Write(line)
 		if err != nil {
+			mu.Unlock()
 			return fmt.Errorf("failed to write to file: %w", err)
 		}
 		if n != len(line) {
+			mu.Unlock()
 			return fmt.Errorf("wrote less than line length to file")
 		}
+		
+		// Update memory map!
+		blocklist[item] = true
 	}
+	mu.Unlock()
 
 	return nil
 }
